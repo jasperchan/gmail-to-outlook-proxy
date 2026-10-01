@@ -3,9 +3,10 @@
 # (a Microsoft Graph `application` body): delegated Mail.Send (e383f46e…) and
 # User.Read (e1fe6dd8…) on Microsoft Graph, v2 tokens, Web redirect URIs.
 #
-# usage: deploy/create-entra-app.sh [--all-accounts] [--years N] "<display name>" <redirect uri>...
-#   --all-accounts  work/school + personal accounts (AzureADandPersonalMicrosoftAccount,
-#                   use "tenant": "common"); default is personal accounts only
+# usage: deploy/create-entra-app.sh [--personal-only] [--years N] "<display name>" <redirect uri>...
+#   --personal-only personal Microsoft accounts only (PersonalMicrosoftAccount,
+#                   "tenant": "consumers"); default is personal + work/school accounts
+#                   (AzureADandPersonalMicrosoftAccount, "tenant": "common")
 #   --years N       client secret lifetime (default 100; directories with an app
 #                   management policy may cap it)
 #   e.g. deploy/create-entra-app.sh "Send As" https://sendas.example/auth http://localhost:3000/auth
@@ -20,14 +21,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-audience=PersonalMicrosoftAccount
-tenant=consumers
+audience=AzureADandPersonalMicrosoftAccount
+tenant=common
 years=100
 while [ $# -gt 0 ]; do
   case "$1" in
-    --all-accounts)
-      audience=AzureADandPersonalMicrosoftAccount
-      tenant=common
+    --personal-only)
+      audience=PersonalMicrosoftAccount
+      tenant=consumers
       shift
       ;;
     --years)
@@ -38,7 +39,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 if [ $# -lt 2 ]; then
-  sed -n '6,11p' "$0" >&2
+  sed -n '6,12p' "$0" >&2
   exit 1
 fi
 name=$1

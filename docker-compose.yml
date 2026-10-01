@@ -12,7 +12,9 @@ services:
       - SMTP_PORT=587 # Internal, don't inherit the host port from .env
     volumes:
       - ./data:/app/data
-      - ./certificates:/app/certificates
+      # certificates directory; CERTIFICATES_DIR=/etc/letsencrypt for a host certbot
+      # (mount the whole directory: live/ holds relative symlinks into archive/)
+      - ${CERTIFICATES_DIR:-./certificates}:/app/certificates:ro
     restart: unless-stopped
     # let the SMTP server drain held messages (pm2 kill_timeout 45s, drain cap 30s)
     stop_grace_period: 60s

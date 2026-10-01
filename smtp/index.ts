@@ -17,13 +17,27 @@ type SessionUser = {
   credentials: MicrosoftOAuthCredentials;
 };
 
-const cert =
-  process.env.SMTP_KEY_FILE && process.env.SMTP_CERT_FILE
-    ? {
-        key: fs.readFileSync(process.env.SMTP_KEY_FILE),
-        cert: fs.readFileSync(process.env.SMTP_CERT_FILE),
-      }
-    : {};
+// TLS for STARTTLS; without it Gmail refuses the server, so an unreadable certificate
+// stops the SMTP server with a clear message instead of silently running without TLS
+function readCertificate() {
+  const { SMTP_KEY_FILE: keyFile, SMTP_CERT_FILE: certFile } = process.env;
+  if (!keyFile && !certFile) {
+    return {};
+  }
+  try {
+    if (!keyFile || !certFile) {
+      throw new Error("set both or neither");
+    }
+    return { key: fs.readFileSync(keyFile), cert: fs.readFileSync(certFile) };
+  } catch (err: any) {
+    console.error(
+      `SMTP server not starting: can't read SMTP_KEY_FILE / SMTP_CERT_FILE (${err.message})`
+    );
+    process.exit(1);
+  }
+}
+
+const cert = readCertificate();
 
 // SMTP_DRY_RUN=1 skips Microsoft entirely: no token refresh, no sendMail, message is logged
 const dryRun = /^(1|true|yes|on)$/i.test(process.env.SMTP_DRY_RUN ?? "");

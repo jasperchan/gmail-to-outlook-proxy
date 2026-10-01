@@ -1,6 +1,6 @@
 {
   "displayName": "Send As",
-  "signInAudience": "PersonalMicrosoftAccount",
+  "signInAudience": "AzureADandPersonalMicrosoftAccount",
   "api": {
     "requestedAccessTokenVersion": 2
   },

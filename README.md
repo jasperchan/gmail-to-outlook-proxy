@@ -17,8 +17,8 @@ I've stood up https://sendas.email/ for myself, but all are welcome to use it if
 
 ## Setup
 
-1. Have a domain name with valid SSL certificates (https://certbot.eff.org/) and update `SMTP_HOST`, `SMTP_KEY_FILE`, and `SMTP_CERT_FILE` in the `.env`.
-2. Register an app with Microsoft Graph. `deploy/create-entra-app.sh` does steps 2–4 with the Azure CLI from the template in `deploy/entra-app.json` (e.g. `deploy/create-entra-app.sh "Send As" https://<HOST>/auth http://localhost:3000/auth`, add `--all-accounts` for [work or school accounts](#work-or-school-accounts)) and writes a ready-to-paste `MICROSOFT_APPS` entry (the client secret is valid for 100 years by default, `--years N` to change; apps for personal accounts allow at most 2 secrets, so delete the unused one before adding another); set the publisher domain / verified publisher in the Entra portal afterwards. Manually: register an app (https://learn.microsoft.com/en-us/graph/auth/auth-concepts) with delegated `Mail.Send` and `User.Read` permissions.
+1. Have a domain name pointing at the server, a TLS certificate for it (https://certbot.eff.org/) and ports set up as in [Self-hosting: DNS, ports and certificates](#self-hosting-dns-ports-and-certificates), and set `SMTP_HOST`, `SMTP_KEY_FILE`, and `SMTP_CERT_FILE` in the `.env`.
+2. Register an app with Microsoft Graph. `deploy/create-entra-app.sh` does steps 2–4 with the Azure CLI from the template in `deploy/entra-app.json` (e.g. `deploy/create-entra-app.sh "Send As" https://<HOST>/auth http://localhost:3000/auth`; the app accepts personal and [work or school accounts](#work-or-school-accounts), add `--personal-only` to limit it to personal accounts) and writes a ready-to-paste `MICROSOFT_APPS` entry (the client secret is valid for 100 years by default, `--years N` to change; apps for personal accounts allow at most 2 secrets, so delete the unused one before adding another); set the publisher domain / verified publisher in the Entra portal afterwards. Manually: register an app (https://learn.microsoft.com/en-us/graph/auth/auth-concepts) with delegated `Mail.Send` and `User.Read` permissions.
 3. Configure the app as a Web platform with valid redirect URIs `https://<HOST>/auth` (add `http://localhost:3000/auth` to log in during local development).
 4. Generate a client secret for the app and set `MICROSOFT_APPS` in the `.env` to a JSON array of app registrations (multiple are supported). `id` is the app's **Application (client) ID** and `secret` is the client secret's **Value** (shown once when you create it), not its Secret ID. The default app for new users is the first entry, or set `MICROSOFT_APPS_DEFAULT_ID` explicitly:
    ```
@@ -35,19 +35,19 @@ I've stood up https://sendas.email/ for myself, but all are welcome to use it if
 
 ## Work or school accounts
 
-By default apps sign in through the `consumers` endpoint, which only accepts personal Microsoft accounts. One app registration can serve both personal and work or school (Microsoft 365) accounts:
-
-1. In the app registration, set **Supported account types** to "Accounts in any organizational directory and personal Microsoft accounts" (`AzureADandPersonalMicrosoftAccount`). Existing personal users keep working: their sign-ins continue to refresh and keep the same SMTP password.
-2. Wait until Microsoft has applied the change (usually about a minute; until then sign-ins and refreshes through `common` fail with `AADSTS90023`).
-3. Set `"tenant": "common"` on that app's entry in `MICROSOFT_APPS` and restart.
-
-Personal and work accounts are told apart per sign-in, so the same login page works for both. Notes:
+Personal Microsoft accounts (Outlook.com, Hotmail, Live) and work or school (Microsoft 365) accounts both sign in on the same page; https://sendas.email accepts both. Each entry in `MICROSOFT_APPS` signs in through its `tenant`: `common` for an app that accepts both kinds of account (what `deploy/create-entra-app.sh` creates), `consumers` (the default when `tenant` is omitted) for an app limited to personal accounts.
 
 - The account needs an Exchange Online mailbox. A work sign-in whose organization uses another mail provider can log in, but sending fails (`450 The mailbox is either inactive…`).
 - Depending on the organization's consent policy, users may need an admin to approve the app the first time. Publisher-verified apps are allowed in more organizations.
 - The SMTP username shown after signing in is the mailbox's primary address.
 
-**Alternative, a single organization only:** register an app in that organization's Entra tenant with "Accounts in this organizational directory only" and add it as an extra entry with its tenant id and a name, e.g. `{"id":"APP_ID","secret":"APP_SECRET","name":"work","tenant":"<TENANT_ID>"}` (inside the single-line `MICROSOFT_APPS` array). Users of that organization sign in at `https://<HOST>/auth?app=work`.
+**Opening an existing personal-only app to work accounts:** existing users keep working and keep their SMTP password.
+
+1. In the app registration, set **Supported account types** to "Accounts in any organizational directory and personal Microsoft accounts" (`AzureADandPersonalMicrosoftAccount`).
+2. Wait until Microsoft has applied the change (usually about a minute; until then sign-ins and refreshes through `common` fail with `AADSTS90023`).
+3. Set `"tenant": "common"` on that app's entry in `MICROSOFT_APPS` and restart.
+
+**A single organization only:** register an app in that organization's Entra tenant with "Accounts in this organizational directory only" and add it as an extra entry with its tenant id and a name, e.g. `{"id":"APP_ID","secret":"APP_SECRET","name":"work","tenant":"<TENANT_ID>"}` (inside the single-line `MICROSOFT_APPS` array). Users of that organization sign in at `https://<HOST>/auth?app=work`.
 
 ## Local development
 
@@ -86,7 +86,7 @@ Scripts (run on the server from anywhere):
 - `deploy/logs.sh`, `deploy/shell.sh`: follow logs / open a shell in the container.
 - `deploy/renew-certs.sh`: issue or renew the SMTP certificate with certbot + Cloudflare DNS, then reload the SMTP server.
 - `deploy/backup.sh`: copy the sqlite db to S3.
-- `deploy/daily.sh`: both of the above, run by `deploy/systemd/sendas-daily.timer`:
+- `deploy/daily.sh`: both of the above, run by `deploy/systemd/sendas-daily.timer` as root (root needs the `docker compose` plugin, not just the invoking user):
   ```
   sudo cp deploy/systemd/sendas-daily.* /etc/systemd/system/
   sudo systemctl daemon-reload && sudo systemctl enable --now sendas-daily.timer
@@ -114,6 +114,7 @@ Environment variables (`.env`, overridden by `.env.local` in development; see `.
 | `SMTP_KEY_FILE`, `SMTP_CERT_FILE`             | TLS key and certificate for the SMTP server (empty disables TLS, for local development)                                                                                                       |
 | `SMTP_PORT`                                   | SMTP listen port locally; host port in docker compose (default 587)                                                                                                                           |
 | `WEB_PORT`                                    | Host port for the web app in docker compose (default 3000)                                                                                                                                    |
+| `CERTIFICATES_DIR`                            | Host directory mounted at `certificates/` in docker compose (default `./certificates`), see [Self-hosting](#self-hosting-dns-ports-and-certificates)                                          |
 | `SMTP_MERGE_WINDOW_MS`, `SMTP_MERGE_MAX_MS`   | How long to wait for more copies of a message before sending (default 5000), and the cap from the first copy (default 60000), see [Multiple recipients and Bcc](#multiple-recipients-and-bcc) |
 | `SMTP_DRY_RUN`                                | Log messages instead of sending them through Graph                                                                                                                                            |
 
@@ -132,9 +133,22 @@ These come from Microsoft Graph and Exchange, not from the proxy:
 - **Headers:** `Message-ID`, `In-Reply-To` and `References` (reply threading) are kept; custom `X-` headers and the original `Date` are replaced by Exchange.
 - **Late Bcc copies:** if a Bcc recipient's copy arrives after the merge window, that recipient is not sent the message (Graph delivers to whoever is in the headers, so adding them would re-send it to everyone); the server logs a warning. Gmail sends all copies within about a second, well inside the window.
 
-## Certificates (Route53)
+## Self-hosting: DNS, ports and certificates
 
-For Cloudflare DNS, `deploy/renew-certs.sh` does this (and reloads the SMTP server) using the settings in `deploy/.env`. For Route53:
+Two hostnames are involved, and they can be the same name: the web app's (the redirect URI registered with Microsoft, `https://<HOST>/auth`) and the SMTP server's (`SMTP_HOST`, which users enter in Gmail).
+
+- **DNS:** point both at the server (a dynamic DNS name works for a home server).
+- **SMTP port 587:** forward TCP 587 from the router/firewall to the host (`SMTP_PORT` changes the host port). Gmail only talks to it with STARTTLS, so the SMTP server needs a valid, trusted certificate for `SMTP_HOST`. Some residential ISPs block inbound mail ports.
+- **Web app over HTTPS:** Microsoft only accepts `https://` redirect URIs (except `http://localhost`). The web app listens on plain HTTP on `WEB_PORT` (default 3000), so put a reverse proxy with a certificate in front of it (nginx, Caddy, a Cloudflare tunnel, …) forwarding `https://<HOST>` to `http://127.0.0.1:3000`, and forward 443 (and 80 if the proxy issues its certificates over HTTP).
+- **Certificates in the container:** docker compose mounts `CERTIFICATES_DIR` (default `./certificates`) read-only at `/app/certificates`, and `SMTP_KEY_FILE` / `SMTP_CERT_FILE` are paths inside that directory, e.g. `certificates/live/<SMTP_HOST>/privkey.pem` and `certificates/live/<SMTP_HOST>/fullchain.pem`. With certbot installed on the host, set `CERTIFICATES_DIR=/etc/letsencrypt` in `.env`: mount the whole directory, since the files in `live/` are relative symlinks into `archive/`. The container runs as root, so the root-only private key is readable.
+- **Renewals:** the SMTP server reads the certificate when it starts. Reload it after each renewal, e.g. a certbot deploy hook running `docker compose -f <checkout>/docker-compose.yml exec -T app pm2 reload pm2.json --only sendas-smtp` (`deploy/renew-certs.sh` does this for its own certificates).
+- **`.env` changes** are built into the image: rebuild with `docker compose up -d --build` (or `deploy/update.sh`).
+
+**Troubleshooting:** if the web app works but Gmail can't connect, check the logs (`deploy/logs.sh` or `docker compose logs app`). An unreadable certificate stops the SMTP server with `SMTP server not starting: can't read SMTP_KEY_FILE / SMTP_CERT_FILE (…)` while the web app keeps running. From outside the network, `openssl s_client -starttls smtp -connect <SMTP_HOST>:587 -servername <SMTP_HOST>` should show the certificate chain and a `250` reply; a timeout means the port isn't reachable (forwarding, firewall or ISP).
+
+### Issuing certificates with certbot and DNS
+
+With Cloudflare DNS, `deploy/renew-certs.sh` issues and renews the certificate into `./certificates` (and reloads the SMTP server) using the settings in `deploy/.env`. With Route53:
 
 Reference: https://certbot-dns-route53.readthedocs.io/en/stable/
 
