@@ -112,8 +112,7 @@ export async function exchangeForCredentials(
   credentials.expires = Date.now() + credentials.expires_in * 1000;
   const email = await getLoginEmail(credentials);
   delete credentials.id_token;
-  await setCredentials(email, credentials, app);
-  return { email, credentials };
+  return { email: await setCredentials(email, credentials, app), credentials };
 }
 
 function isPersonalAccount(idToken?: string) {
@@ -135,7 +134,7 @@ async function getLoginEmail(credentials: MicrosoftOAuthCredentials) {
   const personal = isPersonalAccount(credentials.id_token);
   const email = personal
     ? me.userPrincipalName
-    : me.mail ?? me.userPrincipalName;
+    : (me.mail ?? me.userPrincipalName);
   console.log(`Login: ${email} (${personal ? "personal" : "work/school"})`);
   return email;
 }
@@ -170,6 +169,9 @@ async function setCredentials(
   credentials: MicrosoftOAuthCredentials,
   app: MicrosoftAppRegistration
 ) {
+  // emails match case-insensitively; keep an existing row's casing so a different
+  // casing from Microsoft updates that row instead of creating a second one
+  email = (await getUser(email))?.email ?? email;
   await upsert(
     "Tokens",
     [
@@ -183,6 +185,7 @@ async function setCredentials(
     ],
     { ignoreIfSetFields: ["smtp_password"] }
   );
+  return email;
 }
 
 export function getMicrosoftGraphClient(token: MicrosoftOAuthCredentials) {

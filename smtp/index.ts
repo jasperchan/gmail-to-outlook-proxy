@@ -7,7 +7,7 @@ import {
   MicrosoftOAuthCredentials,
 } from "../lib/microsoft.js";
 import fs from "node:fs";
-import { getUser, User } from "../lib/db.js";
+import { getDb, getUser, User } from "../lib/db.js";
 import { onMailForwarded } from "../lib/hooks.js";
 import { createSmtpServer } from "./server.js";
 
@@ -81,11 +81,19 @@ const port = Number(process.env.SMTP_PORT || 587);
 if (!Number.isInteger(port)) {
   throw new Error(`Invalid SMTP_PORT: ${process.env.SMTP_PORT}`);
 }
-server.listen(port, () => {
-  console.log(
-    `SMTP server listening on port ${port}${dryRun ? " (dry run)" : ""}`
-  );
-});
+// check the schema before accepting connections: fail fast instead of on the first login
+getDb().then(
+  () =>
+    server.listen(port, () => {
+      console.log(
+        `SMTP server listening on port ${port}${dryRun ? " (dry run)" : ""}`
+      );
+    }),
+  (err) => {
+    console.error(`SMTP server not starting: ${err.message ?? err}`);
+    process.exit(1);
+  }
+);
 
 // docker stop / pm2 reload: finish everything already accepted before exiting
 // (keep pm2's kill_timeout and compose's stop_grace_period above the drain timeout)

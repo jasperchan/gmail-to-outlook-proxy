@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "lint": "next lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "app:dev": "next dev",
     "app:build": "next build",
     "app:start": "next start",
@@ -13,7 +15,8 @@
     "smtp:test": "node build/smtp/test.js",
     "smtp:seed": "node build/smtp/seed.js",
     "smtp:fixture": "node build/smtp/fixture.js",
-    "test": "npm run smtp:build && node --test build/smtp/server.test.js",
+    "db:migrate": "node build/scripts/db-migrate.js",
+    "test": "npm run smtp:build && node --test build/smtp/server.test.js build/smtp/db.test.js",
     "dev": "npm run smtp:build && concurrently -k -n app,tsc,smtp -c blue,gray,green \"npm run app:dev\" \"npm run smtp:watch -- --preserveWatchOutput\" \"npm run smtp:dev\"",
     "dev:dry": "SMTP_DRY_RUN=1 npm run dev",
     "build": "npm run app:build && npm run smtp:build",
@@ -50,6 +53,7 @@
     "eslint-config-next": "15.0.1",
     "nodemon": "^3.1.7",
     "postcss": "^8",
+    "prettier": "3.9.9",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }

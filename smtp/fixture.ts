@@ -158,8 +158,8 @@ function main() {
     )}`,
     sender: "sender@example.com",
     copies: recordings.map(({ meta, raw }) => ({
-      rcptTo: (meta.rcptTo as string[]).map(
-        (r) => addresses.get(r.toLowerCase())!
+      rcptTo: (meta.rcptTo as string[]).map((r) =>
+        addresses.get(r.toLowerCase())!
       ),
       raw: sanitize(raw, addresses, messageIds),
     })),
