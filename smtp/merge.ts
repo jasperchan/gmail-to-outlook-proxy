@@ -36,7 +36,7 @@ function headerFields(header: string) {
 }
 
 // comparison key: case-insensitive, with a quoted local part unquoted
-export function canonical(address: string) {
+function canonical(address: string) {
   const value = address.trim().toLowerCase();
   const at = value.lastIndexOf("@");
   if (at > 0 && value.startsWith('"') && value[at - 1] === '"') {
@@ -87,16 +87,10 @@ export function getMessageId(raw: Buffer) {
   return undefined;
 }
 
-// Replaces (or removes, when empty) the Bcc header and optionally drops To/Cc.
-// The body is kept byte for byte.
-export function rewriteRecipients(
-  raw: Buffer,
-  bcc: string[],
-  options: { dropToCc?: boolean } = {}
-) {
+// Replaces (or removes, when empty) the Bcc header. The body is kept byte for byte.
+export function rewriteRecipients(raw: Buffer, bcc: string[]) {
   const { header, rest, eol } = splitMessage(raw);
-  const drop = options.dropToCc ? /^(bcc|to|cc):/i : /^bcc:/i;
-  const fields = headerFields(header).filter((field) => !drop.test(field));
+  const fields = headerFields(header).filter((field) => !/^bcc:/i.test(field));
   if (!fields.length && !bcc.length) {
     return raw;
   }
@@ -111,7 +105,7 @@ export function rewriteRecipients(
 }
 
 // Every envelope recipient, deduped by canonical form.
-export function envelopeRecipients(copies: Copy[]) {
+function envelopeRecipients(copies: Copy[]) {
   const seen = new Map<string, string>();
   for (const address of copies.flatMap((c) => c.rcptTo)) {
     const key = canonical(address);
@@ -128,9 +122,6 @@ export function envelopeRecipients(copies: Copy[]) {
 // normal client sends one transaction whose envelope has Bcc recipients and no Bcc header.
 // Merge all copies of a message into one whose headers name every intended recipient.
 export function mergeCopies(copies: Copy[]) {
-  if (!copies.length) {
-    throw new Error("No copies to merge.");
-  }
   const base =
     copies.find((c) => getHeaderAddresses(c.raw).bcc.length === 0) ?? copies[0];
   const { to, cc } = getHeaderAddresses(base.raw);
@@ -145,9 +136,5 @@ export function mergeCopies(copies: Copy[]) {
     }
   }
   visible.forEach((a) => bcc.delete(a));
-  return {
-    raw: rewriteRecipients(base.raw, [...bcc.values()]),
-    // canonical forms, for tracking who has been delivered to
-    recipients: [...new Set([...visible, ...bcc.keys()])],
-  };
+  return rewriteRecipients(base.raw, [...bcc.values()]);
 }

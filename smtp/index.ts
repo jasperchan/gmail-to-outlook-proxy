@@ -27,21 +27,15 @@ const cert =
 
 // SMTP_DRY_RUN=1 skips Microsoft entirely: no token refresh, no sendMail, message is logged
 const dryRun = /^(1|true|yes|on)$/i.test(process.env.SMTP_DRY_RUN ?? "");
-// SMTP_DEBUG=1 logs connections, logins, envelopes and merge decisions (not bodies)
-const debug = /^(1|true|yes|on)$/i.test(process.env.SMTP_DEBUG ?? "");
 
-// Gmail delivers one copy per recipient in parallel (observed within ~0.4s); wait this
-// long after the latest copy before sending, capped at the max from the first copy
-const mergeWindowMs = Number(process.env.SMTP_MERGE_WINDOW_MS || 5000);
-const maxWaitMs = Number(process.env.SMTP_MERGE_MAX_MS || 60000);
+// optional overrides for how long to wait for more copies of a message (see server.ts)
+const envMs = (name: string) =>
+  process.env[name] ? Number(process.env[name]) : undefined;
 
 const { server, drain } = createSmtpServer<SessionUser>({
   serverOptions: cert,
-  mergeWindowMs,
-  maxWaitMs,
-  log: debug
-    ? (session, message) => console.log(`[smtp ${session.id}] ${message}`)
-    : undefined,
+  mergeWindowMs: envMs("SMTP_MERGE_WINDOW_MS"),
+  maxWaitMs: envMs("SMTP_MERGE_MAX_MS"),
   async authenticate(username, password) {
     const user = await getUser(username);
     if (!user || user.smtp_password !== password) {
@@ -106,7 +100,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     }
     stopping = true;
     console.log(`SMTP server: ${signal}, draining`);
-    const { leftover } = await drain({ timeoutMs: 30000 });
+    const { leftover } = await drain();
     console.log(
       leftover
         ? `SMTP server exiting with ${leftover} unfinished transaction(s)`

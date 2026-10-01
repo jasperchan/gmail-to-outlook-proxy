@@ -5,9 +5,8 @@ import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { migrationStatus, runMigrations } from "../lib/migrations.js";
 
-// usage: npm run db:migrate [-- --status | --check]
-//   --status  print pending migrations, change nothing
-//   --check   like --status, but exit 2 if the schema isn't current (for deploy scripts)
+// usage: npm run db:migrate [-- --check]
+//   --check  print pending migrations, change nothing, exit 2 if any are pending
 // Applies pending schema migrations to SQLITE_PATH. Before changing anything it
 // writes a consistent snapshot (VACUUM INTO) next to the database, keeping the 3
 // most recent, so a bad migration can be undone by restoring that file.
@@ -30,10 +29,7 @@ import { migrationStatus, runMigrations } from "../lib/migrations.js";
       process.exitCode = pending.length || unknown.length ? 2 : 0;
       return;
     }
-    if (
-      process.argv.includes("--status") ||
-      (!pending.length && !unknown.length)
-    ) {
+    if (!pending.length && !unknown.length) {
       return;
     }
 

@@ -41,7 +41,7 @@ test("db:migrate applies all migrations to a fresh database, once", async () => 
   await db.close();
 });
 
-test("a pre-migration database (like prod today) adopts the schema with its data intact", async () => {
+test("a database that already has the Tokens table adopts the migrations with its data intact", async () => {
   const db = await openDb(tempDbPath());
   await db.exec(`
     CREATE TABLE Tokens (

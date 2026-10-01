@@ -10,15 +10,36 @@ import {
   mergeCopies,
   rewriteRecipients,
 } from "../smtp/merge.js";
-import type { Fixture } from "../smtp/fixture.js";
 
-// Replays recorded client behavior (tests/fixtures, see `npm run smtp:fixture`) against
+// Replays recorded client behavior (tests/fixtures) against
 // the real SMTP server with Microsoft Graph replaced by a fake that captures what it
 // would have sent. Graph delivers to the To/Cc/Bcc headers, so that's what we assert on.
 
 type User = { email: string };
 
+// sanitized recordings of real client sessions: one entry per SMTP transaction
+type Fixture = {
+  name: string;
+  description: string;
+  copies: { rcptTo: string[]; raw: string }[];
+};
+
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// counts console.warn calls during fn (late copies that miss a recipient warn)
+async function countWarnings(fn: () => Promise<void>) {
+  const original = console.warn;
+  let count = 0;
+  console.warn = () => {
+    count++;
+  };
+  try {
+    await fn();
+  } finally {
+    console.warn = original;
+  }
+  return count;
+}
 
 function loadFixture(name: string): Fixture {
   return JSON.parse(
@@ -200,21 +221,17 @@ test("a failed send is reported to every connection and a retry still sends", as
   }
 });
 
-test("a copy arriving after the send only goes to recipients not yet delivered", async () => {
+test("a copy arriving after the send is acknowledged, not sent again", async () => {
   const [toCopy, bccCopy] = loadFixture("gmail-to-bcc").copies;
   const server = await startServer({ mergeWindowMs: 50 });
   try {
     await deliver(server.port, toCopy);
     await delay(100);
-    await deliver(server.port, bccCopy);
-    assert.equal(server.sent.length, 2);
-    const late = getHeaderAddresses(server.sent[1].raw);
-    assert.deepEqual(late.to, []);
-    assert.deepEqual(late.cc, []);
-    assert.deepEqual(late.bcc, ["bcc@example.org"]);
-    // and a straggler for an already delivered recipient is not resent
-    await deliver(server.port, toCopy);
-    assert.equal(server.sent.length, 2);
+    // a duplicate of a delivered recipient's copy: silently acknowledged
+    assert.equal(await countWarnings(() => deliver(server.port, toCopy)), 0);
+    // a Bcc copy that missed the window: acknowledged, not delivered, warned about
+    assert.equal(await countWarnings(() => deliver(server.port, bccCopy)), 1);
+    assert.equal(server.sent.length, 1);
   } finally {
     await server.stop();
   }
@@ -260,11 +277,11 @@ test("mergeCopies handles folded headers, groups and case", () => {
       raw,
     },
   ]);
-  const headers = getHeaderAddresses(merged.raw);
+  const headers = getHeaderAddresses(merged);
   assert.deepEqual(headers.to, ["a@example.org", "b@example.org"]);
   assert.deepEqual(headers.cc, ["c@example.org"]);
   assert.deepEqual(headers.bcc, ["d@example.org"]);
-  assert.ok(merged.raw.toString().endsWith("\r\n\r\nbody"));
+  assert.ok(merged.toString().endsWith("\r\n\r\nbody"));
 });
 
 // a synthetic message built on the recorded Gmail headers
@@ -339,42 +356,10 @@ test("copies arriving while the merged send is in flight are not sent twice", as
       deliver(server.port, bccCopy),
       deliver(server.port, toCopy), // a retry/duplicate of the To copy
     ]);
-    // the full message once, then the Bcc recipient alone
-    assert.equal(server.sent.length, 2);
+    assert.equal(server.sent.length, 1);
     assert.deepEqual(getHeaderAddresses(server.sent[0].raw).to, [
       "to@example.org",
     ]);
-    const late = getHeaderAddresses(server.sent[1].raw);
-    assert.deepEqual(late.to, []);
-    assert.deepEqual(late.bcc, ["bcc@example.org"]);
-  } finally {
-    await server.stop();
-  }
-});
-
-test("concurrent late copies are sent once each and remembered", async () => {
-  const [toCopy, bccCopy] = loadFixture("gmail-to-bcc").copies;
-  const bcc2 = {
-    rcptTo: ["bcc2@example.org"],
-    raw: withHeaders(bccCopy.raw, { Bcc: "bcc2@example.org" }),
-  };
-  const server = await startServer({ mergeWindowMs: 50, sendDelayMs: 100 });
-  try {
-    await deliver(server.port, toCopy);
-    await Promise.all([
-      deliver(server.port, bccCopy),
-      deliver(server.port, bcc2),
-    ]);
-    await deliver(server.port, bccCopy);
-    assert.equal(server.sent.length, 3);
-    assert.deepEqual(
-      server.sent
-        .slice(1)
-        .map((s) => getHeaderAddresses(s.raw).bcc[0])
-        .sort(),
-      ["bcc2@example.org", "bcc@example.org"]
-    );
-    assert.equal(server.hooked.length, 3);
   } finally {
     await server.stop();
   }
@@ -399,23 +384,23 @@ test("a long Bcc list is folded under the 998 character line limit", () => {
     { length: 80 },
     (_, i) => `user${i}@example.org`
   );
-  const merged = mergeCopies([
+  const raw = mergeCopies([
     {
       rcptTo: ["to@example.org", ...recipients],
       raw: Buffer.from("To: to@example.org\r\nMessage-ID: <m@x>\r\n\r\nbody"),
     },
   ]);
   assert.ok(
-    merged.raw
+    raw
       .toString()
       .split("\r\n")
       .every((line) => line.length <= 998)
   );
-  assert.equal(getHeaderAddresses(merged.raw).bcc.length, 80);
+  assert.equal(getHeaderAddresses(raw).bcc.length, 80);
 });
 
 test("a quoted local part in the envelope matches the header address", () => {
-  const merged = mergeCopies([
+  const raw = mergeCopies([
     {
       rcptTo: ['"john.doe"@example.org'],
       raw: Buffer.from(
@@ -423,7 +408,7 @@ test("a quoted local part in the envelope matches the header address", () => {
       ),
     },
   ]);
-  assert.deepEqual(getHeaderAddresses(merged.raw).bcc, []);
+  assert.deepEqual(getHeaderAddresses(raw).bcc, []);
 });
 
 test("drain: a fan-out in progress still merges, then the server stops listening", async () => {

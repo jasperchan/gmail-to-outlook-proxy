@@ -8,11 +8,9 @@ import { Database } from "sqlite";
 
 const TABLE = "migrations";
 
-export function migrationsPath() {
-  return process.env.MIGRATIONS_PATH || path.join(process.cwd(), "migrations");
-}
+const MIGRATIONS_DIR = path.join(process.cwd(), "migrations");
 
-function migrationFiles(dir = migrationsPath()) {
+function migrationFiles(dir = MIGRATIONS_DIR) {
   return fs
     .readdirSync(dir)
     .map((file) => /^(\d+)[.-](.*?)\.sql$/.exec(file))
@@ -35,7 +33,7 @@ async function appliedIds(db: Database) {
   return rows.map((row) => row.id);
 }
 
-export async function migrationStatus(db: Database, dir = migrationsPath()) {
+export async function migrationStatus(db: Database, dir = MIGRATIONS_DIR) {
   const files = migrationFiles(dir);
   const known = new Set(files.map((f) => f.id));
   const applied = await appliedIds(db);
@@ -47,7 +45,7 @@ export async function migrationStatus(db: Database, dir = migrationsPath()) {
   };
 }
 
-export async function assertMigrated(db: Database, dir = migrationsPath()) {
+export async function assertMigrated(db: Database, dir = MIGRATIONS_DIR) {
   const { pending, unknown } = await migrationStatus(db, dir);
   if (unknown.length) {
     throw new Error(
@@ -70,7 +68,7 @@ export async function assertMigrated(db: Database, dir = migrationsPath()) {
 // Applies pending migrations, each in its own transaction (sqlite's migrate()).
 // Refuses when the database has migrations this code doesn't know: sqlite's
 // migrate() would otherwise run their `down` scripts and could drop data.
-export async function runMigrations(db: Database, dir = migrationsPath()) {
+export async function runMigrations(db: Database, dir = MIGRATIONS_DIR) {
   const { pending, unknown } = await migrationStatus(db, dir);
   if (unknown.length) {
     throw new Error(

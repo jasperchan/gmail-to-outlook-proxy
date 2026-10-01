@@ -42,7 +42,7 @@ const personalAccountTenantId = "9188040d-6c67-4c5b-b112-36a304b66dad";
 const clientDefaultId =
   process.env.MICROSOFT_APPS_DEFAULT_ID || appsArray[0].id;
 
-// legacy rows have a null app_id, which falls back to the default app
+// rows without an app_id use the default app
 export function getApp(idOrName?: string | null) {
   const key = idOrName || clientDefaultId;
   const app = apps[key] ?? _.find(appsArray, { name: key });
@@ -129,14 +129,11 @@ function isPersonalAccount(idToken?: string) {
 async function getLoginEmail(credentials: MicrosoftOAuthCredentials) {
   const me: { userPrincipalName: string; mail: string | null } =
     await getMicrosoftGraphClient(credentials).api("/me").get();
-  // personal accounts always used the UPN, keep it so existing users keep their rows;
-  // work/school UPNs can differ from the actual address (e.g. @tenant.onmicrosoft.com)
-  const personal = isPersonalAccount(credentials.id_token);
-  const email = personal
+  // personal accounts are keyed by their UPN; work/school accounts by their mailbox
+  // address, since their UPN can differ from it (e.g. @tenant.onmicrosoft.com)
+  return isPersonalAccount(credentials.id_token)
     ? me.userPrincipalName
     : (me.mail ?? me.userPrincipalName);
-  console.log(`Login: ${email} (${personal ? "personal" : "work/school"})`);
-  return email;
 }
 
 async function refreshCredentials(
@@ -169,8 +166,7 @@ async function setCredentials(
   credentials: MicrosoftOAuthCredentials,
   app: MicrosoftAppRegistration
 ) {
-  // emails match case-insensitively; keep an existing row's casing so a different
-  // casing from Microsoft updates that row instead of creating a second one
+  // emails match case-insensitively; a matching row keeps its stored casing
   email = (await getUser(email))?.email ?? email;
   await upsert(
     "Tokens",

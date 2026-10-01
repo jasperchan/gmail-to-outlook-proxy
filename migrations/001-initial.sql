@@ -1,5 +1,5 @@
 -- Up
--- Original schema. IF NOT EXISTS so databases created before migrations adopt it.
+-- Tokens table. IF NOT EXISTS so it also applies to a database that already has it.
 CREATE TABLE IF NOT EXISTS Tokens (
   email TEXT NOT NULL PRIMARY KEY,
   token TEXT NOT NULL,

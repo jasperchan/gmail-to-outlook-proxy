@@ -69,7 +69,6 @@ Set `SMTP_PORT` if 587 is taken locally.
 ### Tests and formatting
 
 - `npm test` runs the tests in `tests/`, including replays of recorded Gmail SMTP sessions (`tests/fixtures/`).
-- To record new client behavior, set `SMTP_RECORD_DIR=data/smtp-recordings` (keep it out of git), send the messages, then turn the recordings into a sanitized fixture with `npm run smtp:fixture -- <name> "<description>" data/smtp-recordings/<file>.json ...`. Review the fixture before committing it.
 - `npm run format` / `npm run format:check` use the project's pinned Prettier.
 
 ## Deploying
@@ -97,7 +96,7 @@ Scripts (run on the server from anywhere):
 
 The SQLite schema is managed by numbered SQL files in `migrations/` (`-- Up` / `-- Down`). They are applied **explicitly**; the apps never change the schema themselves and refuse to start if migrations are pending.
 
-- `npm run db:migrate` applies pending migrations to `SQLITE_PATH`, after writing a snapshot to `data/backups/` (the 3 most recent are kept). `-- --status` lists pending migrations; `-- --check` exits non-zero if any are pending.
+- `npm run db:migrate` applies pending migrations to `SQLITE_PATH`, after writing a snapshot to `data/backups/` (the 3 most recent are kept). `-- --check` lists pending migrations without changing anything and exits non-zero if any are pending.
 - It refuses to run against a database migrated by a newer version, rather than undoing migrations it doesn't know.
 - On the server: `deploy/update.sh` stops if migrations are pending; review them, run `deploy/migrate.sh`, then run `deploy/update.sh` again. The previous version keeps running until then, so migrations must stay compatible with it.
 - New migration: add the next numbered file (e.g. `003-description.sql`). Never edit a migration that has shipped.
@@ -117,15 +116,12 @@ Environment variables (`.env`, overridden by `.env.local` in development; see `.
 | `WEB_PORT`                                    | Host port for the web app in docker compose (default 3000)                                                                                                                                    |
 | `SMTP_MERGE_WINDOW_MS`, `SMTP_MERGE_MAX_MS`   | How long to wait for more copies of a message before sending (default 5000), and the cap from the first copy (default 60000), see [Multiple recipients and Bcc](#multiple-recipients-and-bcc) |
 | `SMTP_DRY_RUN`                                | Log messages instead of sending them through Graph                                                                                                                                            |
-| `SMTP_DEBUG`                                  | Log connections, logins, envelopes and merge decisions (no message bodies)                                                                                                                    |
-| `SMTP_RECORD_DIR`                             | Save every SMTP transaction for test fixtures (contains full messages; development only)                                                                                                      |
-| `MIGRATIONS_PATH`                             | Override the migrations directory (default `migrations/`)                                                                                                                                     |
 
 ## Multiple recipients and Bcc
 
 Gmail's "Send mail as" delivers a message with several recipients as **one SMTP connection per recipient**, each carrying the same message (same `Message-ID`); only a Bcc recipient's own copy has a `Bcc:` header naming them. Microsoft Graph sends to the To/Cc/Bcc headers of the message and has no separate envelope, so forwarding each copy would duplicate the message for every recipient, and forwarding only the first would lose the Bcc recipients.
 
-The SMTP server therefore holds the copies of a message (grouped by the signed-in user and `Message-ID`) until no new copy has arrived for `SMTP_MERGE_WINDOW_MS`, then sends **one** message whose `Bcc:` names every Bcc recipient. Gmail is answered only after Microsoft accepts it, so failures are reported and retried. A copy that arrives after the message was sent is delivered only to recipients who haven't received it yet. On shutdown (`docker stop`, `pm2 reload`) the server stops accepting connections and sends everything it is holding before exiting.
+The SMTP server therefore holds the copies of a message (grouped by the signed-in user and `Message-ID`) until no new copy has arrived for `SMTP_MERGE_WINDOW_MS`, then sends **one** message whose `Bcc:` names every Bcc recipient. Gmail is answered only after Microsoft accepts it, so failures are reported and retried. On shutdown (`docker stop`, `pm2 reload`) the server stops accepting connections and sends everything it is holding before exiting.
 
 ## Limitations
 
@@ -134,7 +130,7 @@ These come from Microsoft Graph and Exchange, not from the proxy:
 - **From address:** messages are sent from the mailbox's **primary** address. A `From:` set to an alias is replaced with the primary address, and a `From:` the account doesn't own is rejected (the proxy answers `550` so the client bounces immediately).
 - **Accounts that sign in with a non-Microsoft address** (e.g. a Gmail address) have an auto-generated mailbox address like `outlook_<id>@outlook.com`, which is what recipients see and which spam filters may flag. Make an outlook.com alias the primary address at account.microsoft.com to avoid this.
 - **Headers:** `Message-ID`, `In-Reply-To` and `References` (reply threading) are kept; custom `X-` headers and the original `Date` are replaced by Exchange.
-- **Late Bcc copies:** if a Bcc recipient's copy arrives after the merge window, it is delivered as a separate message without the To/Cc headers (Graph delivers to whoever is in the headers).
+- **Late Bcc copies:** if a Bcc recipient's copy arrives after the merge window, that recipient is not sent the message (Graph delivers to whoever is in the headers, so adding them would re-send it to everyone); the server logs a warning. Gmail sends all copies within about a second, well inside the window.
 
 ## Certificates (Route53)
 
@@ -165,10 +161,4 @@ Then update:
 
 Usage is pretty straightforward, visit the web app (http://localhost:3000 by default) and authenticate with your Microsoft account (Outlook.com, or a work or school account if [enabled](#work-or-school-accounts)). You'll then be presented with SMTP credentials to use with Gmail.
 
-You can test send after authenticating by entering the docker shell (`deploy/shell.sh`) and using:
-
-```
-npm run smtp:test -- <OUTLOOK_EMAIL> <TARGET_EMAIL>
-```
-
-This is configured to ignore cert errors (since it'll be using localhost for the SMTP connection). Your cert will need to be valid for Gmail to connect to it.
+To send a test message from the server, open a shell in the container with `deploy/shell.sh` and use `npm run smtp:test` (see [Local development](#local-development)).

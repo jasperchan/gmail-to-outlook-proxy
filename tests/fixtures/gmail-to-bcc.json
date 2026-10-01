@@ -1,8 +1,6 @@
 {
   "name": "gmail-to-bcc",
   "description": "Gmail Send mail as: To + Bcc. One connection per recipient, same Message-ID; only the Bcc recipient's copy has a Bcc header.",
-  "source": "recorded 2026-10-01 from *.google.com",
-  "sender": "sender@example.com",
   "copies": [
     {
       "rcptTo": [

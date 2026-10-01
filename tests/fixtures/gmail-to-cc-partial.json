@@ -1,8 +1,6 @@
 {
   "name": "gmail-to-cc-partial",
   "description": "Gmail Send mail as: To + Cc (only the Cc recipient's connection was recorded; the To copy was lost to a dev-server restart).",
-  "source": "recorded 2026-10-01 from *.google.com",
-  "sender": "sender@example.com",
   "copies": [
     {
       "rcptTo": [
