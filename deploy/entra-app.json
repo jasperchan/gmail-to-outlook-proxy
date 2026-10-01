@@ -1,0 +1,23 @@
+{
+  "displayName": "Send As",
+  "signInAudience": "PersonalMicrosoftAccount",
+  "api": {
+    "requestedAccessTokenVersion": 2
+  },
+  "web": {
+    "redirectUris": ["https://example.com/auth"],
+    "implicitGrantSettings": {
+      "enableAccessTokenIssuance": false,
+      "enableIdTokenIssuance": false
+    }
+  },
+  "requiredResourceAccess": [
+    {
+      "resourceAppId": "00000003-0000-0000-c000-000000000000",
+      "resourceAccess": [
+        { "id": "e383f46e-2787-4529-855e-0e479a3ffac0", "type": "Scope" },
+        { "id": "e1fe6dd8-ba31-4d61-89e7-88639da4683d", "type": "Scope" }
+      ]
+    }
+  ]
+}

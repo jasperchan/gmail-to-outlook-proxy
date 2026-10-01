@@ -15,7 +15,7 @@
     "smtp:test": "node build/smtp/test.js",
     "smtp:seed": "node build/smtp/seed.js",
     "smtp:fixture": "node build/smtp/fixture.js",
-    "db:migrate": "node build/scripts/db-migrate.js",
+    "db:migrate": "npm run -s smtp:build && node build/scripts/db-migrate.js",
     "test": "npm run smtp:build && node --test build/tests/",
     "dev": "npm run smtp:build && concurrently -k -n app,tsc,smtp -c blue,gray,green \"npm run app:dev\" \"npm run smtp:watch -- --preserveWatchOutput\" \"npm run smtp:dev\"",
     "dev:dry": "SMTP_DRY_RUN=1 npm run dev",

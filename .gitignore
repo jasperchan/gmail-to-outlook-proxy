@@ -51,3 +51,4 @@ certificates/*
 # server-only deploy config
 deploy/.env
 hooks.local.js
+*.secret.json
