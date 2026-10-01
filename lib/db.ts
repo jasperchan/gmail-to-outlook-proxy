@@ -2,44 +2,44 @@ import sqlite3 from "sqlite3";
 import { Database, open } from "sqlite";
 import _ from "lodash";
 import { MicrosoftOAuthCredentials } from "./microsoft";
+import { assertMigrated } from "./migrations";
 
 export type Connection = Database;
 
-let db: Connection | undefined;
+let db: Promise<Connection> | undefined;
 
 export type User = {
   email: string;
   token: MicrosoftOAuthCredentials;
   smtp_password: string;
-  app_id: string;
+  app_id: string | null;
 };
 
-export async function getDb() {
-  if (!db) {
-    const filename = process.env.SQLITE_PATH!;
-    db = await open({
-      filename,
+export function getDb() {
+  // memoize the promise so concurrent callers share one connection
+  db ??= (async () => {
+    const connection = await open({
+      filename: process.env.SQLITE_PATH!,
       driver: sqlite3.Database,
     });
-    // create schema
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS Tokens (
-        email TEXT NOT NULL PRIMARY KEY,
-        token TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT (datetime('now')),
-        updated_at TIMESTAMP DEFAULT (datetime('now')),
-        smtp_password TEXT NOT NULL,
-        app_id TEXT
-      );
-    `);
-  }
+    try {
+      // migrations are applied explicitly (npm run db:migrate), never on startup
+      await assertMigrated(connection);
+    } catch (err) {
+      await connection.close();
+      db = undefined; // allow a retry once the schema is migrated
+      throw err;
+    }
+    return connection;
+  })();
   return db;
 }
 
 export async function endDb() {
   if (db) {
-    await db.close();
+    const connection = db;
     db = undefined;
+    await (await connection.catch(() => undefined))?.close();
   }
 }
 
@@ -50,7 +50,7 @@ export async function getUser(email?: string): Promise<User | undefined> {
     token: string;
     smtp_password: string;
     app_id: string;
-  }>(`SELECT * FROM Tokens WHERE email = ?`, email);
+  }>(`SELECT * FROM Tokens WHERE email = ? COLLATE NOCASE`, email);
   return result
     ? {
         email: result.email,
@@ -67,7 +67,7 @@ export async function updateUserSmtpPassword(
 ) {
   const db = await getDb();
   await db.run(
-    `UPDATE Tokens SET smtp_password = ? WHERE email = ?`,
+    `UPDATE Tokens SET smtp_password = ? WHERE email = ? COLLATE NOCASE`,
     smtp_password,
     email
   );

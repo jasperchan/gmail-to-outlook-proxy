@@ -1,0 +1,12 @@
+{
+  "name": "gmail-to-cc-partial",
+  "description": "Gmail Send mail as: To + Cc (only the Cc recipient's connection was recorded; the To copy was lost to a dev-server restart).",
+  "copies": [
+    {
+      "rcptTo": [
+        "cc@example.org"
+      ],
+      "raw": "MIME-Version: 1.0\r\nFrom: sender@example.com\r\nDate: Thu, 1 Oct 2026 08:11:17 -0700\r\nMessage-ID: <gmail-to-cc-partial-1@example.com>\r\nSubject: [sendas-dev test] 2 to+cc\r\nTo: to@example.org\r\nCc: cc@example.org\r\nContent-Type: multipart/alternative; boundary=\"00000000000087bf53065cc8d4c9\"\r\n\r\n--00000000000087bf53065cc8d4c9\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n(content removed)\r\n--00000000000087bf53065cc8d4c9\r\nContent-Type: text/html; charset=\"UTF-8\"\r\n\r\n(content removed)\r\n--00000000000087bf53065cc8d4c9--\r\n"
+    }
+  ]
+}

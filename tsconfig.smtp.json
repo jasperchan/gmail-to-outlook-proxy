@@ -18,5 +18,5 @@
     "experimentalDecorators": true,
     "resolveJsonModule": true
   },
-  "include": ["./smtp/**/*"]
+  "include": ["./smtp/**/*", "./scripts/**/*", "./tests/**/*"]
 }

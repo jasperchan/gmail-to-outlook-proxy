@@ -4,7 +4,8 @@
       "name": "sendas-smtp",
       "script": "build/smtp",
       "instances": 1,
-      "exec_mode": "fork"
+      "exec_mode": "fork",
+      "kill_timeout": 45000
     },
     {
       "name": "sendas-app",

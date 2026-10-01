@@ -1,6 +1,5 @@
 import "source-map-support/register.js";
-import "localenv";
-import Server from "smtp-server";
+import "./env.js";
 import {
   getApp,
   getCredentials,
@@ -8,11 +7,12 @@ import {
   MicrosoftOAuthCredentials,
 } from "../lib/microsoft.js";
 import fs from "node:fs";
-import { getUser, User } from "../lib/db.js";
+import { getDb, getUser, User } from "../lib/db.js";
 import { onMailForwarded } from "../lib/hooks.js";
-import Cache from "node-cache";
+import { createSmtpServer } from "./server.js";
 
 type SessionUser = {
+  email: string;
   user: User;
   credentials: MicrosoftOAuthCredentials;
 };
@@ -25,81 +25,87 @@ const cert =
       }
     : {};
 
-const cache = new Cache({ stdTTL: 60, checkperiod: 60 });
+// SMTP_DRY_RUN=1 skips Microsoft entirely: no token refresh, no sendMail, message is logged
+const dryRun = /^(1|true|yes|on)$/i.test(process.env.SMTP_DRY_RUN ?? "");
 
-const server = new Server.SMTPServer({
-  authMethods: ["PLAIN", "LOGIN"],
-  onConnect(session, callback) {
-    return callback();
+// optional overrides for how long to wait for more copies of a message (see server.ts)
+const envMs = (name: string) =>
+  process.env[name] ? Number(process.env[name]) : undefined;
+
+const { server, drain } = createSmtpServer<SessionUser>({
+  serverOptions: cert,
+  mergeWindowMs: envMs("SMTP_MERGE_WINDOW_MS"),
+  maxWaitMs: envMs("SMTP_MERGE_MAX_MS"),
+  async authenticate(username, password) {
+    const user = await getUser(username);
+    if (!user || user.smtp_password !== password) {
+      throw new Error("Invalid username or password.");
+    }
+    const credentials = dryRun
+      ? user.token
+      : await getCredentials(user.email, user.email, getApp(user.app_id));
+    return { email: user.email, user, credentials };
   },
-  ...cert,
-  async onAuth(auth, session, callback) {
+  async send(sessionUser, raw) {
+    if (dryRun) {
+      console.log(`[dry run] ${sessionUser.email}\n${raw.toString()}`);
+      return;
+    }
     try {
-      const user = await getUser(auth.username);
-      if (!user || user.smtp_password !== auth.password) {
-        throw new Error("Invalid username or password.");
-      }
-      const credentials = await getCredentials(
-        user.email,
-        user.email,
-        getApp(user.app_id)
-      );
-      callback(null, {
-        user: {
-          user,
-          credentials,
-        } as SessionUser,
-      });
-    } catch (err) {
-      callback(new Error("Invalid username or password."));
+      await getMicrosoftGraphClient(sessionUser.credentials)
+        .api("/me/sendMail")
+        .header("Content-Type", "text/plain")
+        .post(raw.toString("base64"));
+    } catch (err: any) {
+      // Graph rejecting the message (e.g. SendAsDenied for a From the mailbox doesn't
+      // own) is permanent: answer 550 so the client bounces now instead of retrying
+      // for days. Throttling, server errors and network failures stay temporary.
+      const status = Number(err?.statusCode);
+      err.responseCode =
+        status >= 400 && status < 500 && status !== 429 ? 550 : 451;
+      throw err;
     }
   },
-  onData(stream, session, callback) {
-    const chunks: Buffer[] = [];
-    stream
-      .on("data", (chunk: Buffer) => {
-        chunks.push(chunk);
-      })
-      .on("error", (err) => callback(err))
-      .on("end", async () => {
-        try {
-          const raw = Buffer.concat(chunks);
-          const msg = raw.toString("base64");
-          // unfortunately, gmail seems to send the same message multiple times when sending to multiple recipients so we must dedupe
-          const messageId = raw.toString().match(/^Message-ID: (.*)$/im)?.[1];
-          if (messageId) {
-            if (cache.get(messageId)) {
-              return callback();
-            }
-            cache.set(messageId, true);
-          }
-          const sessionUser = session.user as any as SessionUser;
-          const client = getMicrosoftGraphClient(sessionUser.credentials);
-          await client
-            .api("/me/sendMail")
-            .header("Content-Type", "text/plain")
-            .post(msg);
-          onMailForwarded(sessionUser.user.email, msg);
-          callback();
-        } catch (err: any) {
-          callback(err);
-        }
-      });
+  onSent(sessionUser, raw) {
+    onMailForwarded(sessionUser.email, raw.toString("base64"));
   },
-}).on("error", (err) => {
-  // prevent unhandled error from crashing the server
-  console.log(err);
 });
 
-const port = 587;
-server.listen(port, () => {
-  console.log(`SMTP server listening on port ${port}`);
-  process.on("SIGINT", () => {
-    console.log("SMTP server shutting down");
-    cache.close();
-    server.close(() => {
-      console.log("SMTP server exiting");
-      process.exit(0);
-    });
+const port = Number(process.env.SMTP_PORT || 587);
+if (!Number.isInteger(port)) {
+  throw new Error(`Invalid SMTP_PORT: ${process.env.SMTP_PORT}`);
+}
+// check the schema before accepting connections: fail fast instead of on the first login
+getDb().then(
+  () =>
+    server.listen(port, () => {
+      console.log(
+        `SMTP server listening on port ${port}${dryRun ? " (dry run)" : ""}`
+      );
+    }),
+  (err) => {
+    console.error(`SMTP server not starting: ${err.message ?? err}`);
+    process.exit(1);
+  }
+);
+
+// docker stop / pm2 reload: finish everything already accepted before exiting
+// (keep pm2's kill_timeout and compose's stop_grace_period above the drain timeout)
+let stopping = false;
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, async () => {
+    if (stopping) {
+      console.log(`SMTP server: second ${signal}, exiting now`);
+      process.exit(1);
+    }
+    stopping = true;
+    console.log(`SMTP server: ${signal}, draining`);
+    const { leftover } = await drain();
+    console.log(
+      leftover
+        ? `SMTP server exiting with ${leftover} unfinished transaction(s)`
+        : "SMTP server drained, exiting"
+    );
+    process.exit(leftover ? 1 : 0);
   });
-});
+}

@@ -1,0 +1,8 @@
+build/
+.next/
+node_modules/
+data/
+certificates/
+package-lock.json
+tests/fixtures/
+migrations/

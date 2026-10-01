@@ -4,11 +4,15 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"  # Web app
-      - "587:587"    # SMTP
+      # host ports are configurable via WEB_PORT / SMTP_PORT in .env
+      - "${WEB_PORT:-3000}:3000" # Web app
+      - "${SMTP_PORT:-587}:587" # SMTP
     environment:
-      - PORT=3000    # Internal for Next.js compilation
+      - PORT=3000 # Internal for Next.js compilation
+      - SMTP_PORT=587 # Internal, don't inherit the host port from .env
     volumes:
       - ./data:/app/data
       - ./certificates:/app/certificates
     restart: unless-stopped
+    # let the SMTP server drain held messages (pm2 kill_timeout 45s, drain cap 30s)
+    stop_grace_period: 60s
