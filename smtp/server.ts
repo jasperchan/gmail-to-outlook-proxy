@@ -54,7 +54,7 @@ export function createSmtpServer<U extends { email: string }>(
     clearTimeout(group.timer);
     const sending = (async () => {
       try {
-        const merged = mergeCopies(group.copies);
+        const merged = await mergeCopies(group.copies);
         await deps.send(group.user, merged);
         // before resolving, so copies waiting on this send see who already has it
         delivered.set(key, true);
@@ -78,8 +78,8 @@ export function createSmtpServer<U extends { email: string }>(
   // A copy of a message that was already sent: acknowledge it without sending again.
   // Graph delivers to the message's headers, so a Bcc recipient whose copy arrives
   // after the merge window can't be added without re-sending to everyone.
-  function skipDuplicate(waiter: Waiter, copy: Copy) {
-    if (getHeaderAddresses(copy.raw).bcc.length) {
+  async function skipDuplicate(waiter: Waiter, copy: Copy) {
+    if ((await getHeaderAddresses(copy.raw)).bcc.length) {
       console.warn(
         "Bcc copy arrived after its message was sent; that recipient was not delivered"
       );
@@ -127,13 +127,17 @@ export function createSmtpServer<U extends { email: string }>(
     group.timer = setTimeout(() => flush(key), wait);
   }
 
-  function accept(session: SMTPServerSession, raw: Buffer, callback: Waiter) {
+  async function accept(
+    session: SMTPServerSession,
+    raw: Buffer,
+    callback: Waiter
+  ) {
     const user = session.user as any as U;
     const copy = {
       rcptTo: session.envelope.rcptTo.map((r) => r.address),
       raw,
     };
-    const messageId = getMessageId(raw);
+    const messageId = await getMessageId(raw).catch(() => undefined);
     // scope by sender so different users' messages can never be merged
     const key = messageId
       ? `${user.email.toLowerCase()}\n${messageId}`
@@ -172,7 +176,7 @@ export function createSmtpServer<U extends { email: string }>(
         })
         .on("end", () => {
           receiving--;
-          accept(session, Buffer.concat(chunks), callback);
+          accept(session, Buffer.concat(chunks), callback).catch(callback);
         });
     },
   });

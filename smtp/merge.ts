@@ -1,38 +1,44 @@
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { Splitter, Joiner, Headers } from "@zone-eu/mailsplit";
 import addressparser from "nodemailer/lib/addressparser";
 
 // One SMTP transaction as received: the envelope recipients plus the raw message.
 export type Copy = { rcptTo: string[]; raw: Buffer };
 
-function splitMessage(raw: Buffer) {
-  const text = raw.toString("binary");
-  const eol = text.includes("\r\n") ? "\r\n" : "\n";
-  // a message starting with a blank line has no header block at all
-  if (/^\r?\n/.test(text)) {
-    return { header: "", rest: eol + text, eol };
-  }
-  const match = /\r?\n\r?\n/.exec(text);
-  if (!match) {
-    // headers only, no body
-    return { header: text.replace(/\r?\n$/, ""), rest: eol + eol, eol };
-  }
-  return {
-    header: text.slice(0, match.index),
-    rest: text.slice(match.index),
-    eol,
-  };
+// Splits the message with mailsplit and lets `edit` change its top-level headers.
+// Headers that aren't edited and the body are passed through byte for byte.
+async function processMessage(raw: Buffer, edit?: (headers: Headers) => void) {
+  let headers: Headers | undefined;
+  const rootHeaders = new Transform({
+    readableObjectMode: true,
+    writableObjectMode: true,
+    transform(chunk, _encoding, callback) {
+      if (chunk.type === "node" && chunk.root) {
+        headers = chunk.headers;
+        edit?.(chunk.headers);
+      }
+      callback(null, chunk);
+    },
+  });
+  const output: Buffer[] = [];
+  await pipeline(
+    Readable.from([raw]),
+    new Splitter(),
+    rootHeaders,
+    new Joiner(),
+    async function (source: AsyncIterable<Buffer>) {
+      for await (const chunk of source) {
+        output.push(chunk);
+      }
+    }
+  );
+  return { raw: Buffer.concat(output), headers: headers! };
 }
 
-// header lines with folded continuations joined to their field
-function headerFields(header: string) {
-  const fields: string[] = [];
-  for (const line of header.split(/\r?\n/)) {
-    if (/^[ \t]/.test(line) && fields.length) {
-      fields[fields.length - 1] += "\n" + line;
-    } else if (line) {
-      fields.push(line);
-    }
-  }
-  return fields;
+// header values as written (unfolded), e.g. `"Jane Doe" <Jane.Doe@Example.org>`
+function values(headers: Headers, key: string) {
+  return headers.getDecoded(key).map((header) => header.value.trim());
 }
 
 // comparison key: case-insensitive, with a quoted local part unquoted
@@ -45,7 +51,8 @@ function canonical(address: string) {
   return value;
 }
 
-function addresses(value: string) {
+// canonical addresses in header values (groups flattened)
+function addresses(headerValues: string[]) {
   const out: string[] = [];
   const walk = (list: any[]) => {
     for (const item of list) {
@@ -56,64 +63,26 @@ function addresses(value: string) {
       }
     }
   };
-  walk(addressparser(value.replace(/\r?\n[ \t]+/g, " ")) as any[]);
+  headerValues.forEach((value) => walk(addressparser(value) as any[]));
   return out;
 }
 
-export function getHeaderAddresses(raw: Buffer) {
-  const result = {
-    to: [] as string[],
-    cc: [] as string[],
-    bcc: [] as string[],
+function recipientValues(headers: Headers) {
+  return {
+    to: values(headers, "to"),
+    cc: values(headers, "cc"),
+    bcc: values(headers, "bcc"),
   };
-  for (const field of headerFields(splitMessage(raw).header)) {
-    const match = /^(to|cc|bcc):([\s\S]*)$/i.exec(field);
-    if (match) {
-      result[match[1].toLowerCase() as "to" | "cc" | "bcc"].push(
-        ...addresses(match[2])
-      );
-    }
-  }
-  return result;
 }
 
-export function getMessageId(raw: Buffer) {
-  for (const field of headerFields(splitMessage(raw).header)) {
-    const match = /^message-id:([\s\S]*)$/i.exec(field);
-    if (match) {
-      return match[1].replace(/\s+/g, " ").trim() || undefined;
-    }
-  }
-  return undefined;
+export async function getHeaderAddresses(raw: Buffer) {
+  const { to, cc, bcc } = recipientValues((await processMessage(raw)).headers);
+  return { to: addresses(to), cc: addresses(cc), bcc: addresses(bcc) };
 }
 
-// Replaces (or removes, when empty) the Bcc header. The body is kept byte for byte.
-export function rewriteRecipients(raw: Buffer, bcc: string[]) {
-  const { header, rest, eol } = splitMessage(raw);
-  const fields = headerFields(header).filter((field) => !/^bcc:/i.test(field));
-  if (!fields.length && !bcc.length) {
-    return raw;
-  }
-  if (bcc.length) {
-    // folded, one address per line, to stay under the 998 character line limit
-    fields.push(`Bcc: ${bcc.join(",\n ")}`);
-  }
-  return Buffer.from(
-    fields.map((field) => field.replace(/\n/g, eol)).join(eol) + rest,
-    "binary"
-  );
-}
-
-// Every envelope recipient, deduped by canonical form.
-function envelopeRecipients(copies: Copy[]) {
-  const seen = new Map<string, string>();
-  for (const address of copies.flatMap((c) => c.rcptTo)) {
-    const key = canonical(address);
-    if (!seen.has(key)) {
-      seen.set(key, address.trim());
-    }
-  }
-  return [...seen.values()];
+export async function getMessageId(raw: Buffer) {
+  const { headers } = await processMessage(raw);
+  return headers.getFirst("message-id") || undefined;
 }
 
 // Microsoft Graph's MIME sendMail delivers to the To/Cc/Bcc headers, never to the SMTP
@@ -121,20 +90,45 @@ function envelopeRecipients(copies: Copy[]) {
 // Message-ID, and only the Bcc recipient's own copy carries a Bcc header naming it; a
 // normal client sends one transaction whose envelope has Bcc recipients and no Bcc header.
 // Merge all copies of a message into one whose headers name every intended recipient.
-export function mergeCopies(copies: Copy[]) {
+// Recipients are added to Bcc exactly as the sender wrote them; a message that already
+// names all its recipients is returned unchanged. Canonical forms are only compared.
+export async function mergeCopies(copies: Copy[]) {
+  const parsed = await Promise.all(
+    copies.map(async (copy) => ({
+      copy,
+      recipients: recipientValues((await processMessage(copy.raw)).headers),
+    }))
+  );
   const base =
-    copies.find((c) => getHeaderAddresses(c.raw).bcc.length === 0) ?? copies[0];
-  const { to, cc } = getHeaderAddresses(base.raw);
-  const visible = new Set([...to, ...cc]);
-  const bcc = new Map<string, string>();
-  for (const copy of copies) {
-    getHeaderAddresses(copy.raw).bcc.forEach((a) => bcc.set(a, a));
-  }
-  for (const address of envelopeRecipients(copies)) {
-    if (!visible.has(canonical(address)) && !bcc.has(canonical(address))) {
-      bcc.set(canonical(address), address);
+    parsed.find(({ recipients }) => !recipients.bcc.length) ?? parsed[0];
+  const { to, cc, bcc } = base.recipients;
+  const covered = new Set(addresses([...to, ...cc, ...bcc]));
+  const additions: string[] = [];
+  for (const { recipients } of parsed) {
+    for (const value of recipients === base.recipients ? [] : recipients.bcc) {
+      const found = addresses([value]);
+      if (found.some((address) => !covered.has(address))) {
+        additions.push(value);
+        found.forEach((address) => covered.add(address));
+      }
     }
   }
-  visible.forEach((a) => bcc.delete(a));
-  return rewriteRecipients(base.raw, [...bcc.values()]);
+  for (const address of copies.flatMap((copy) => copy.rcptTo)) {
+    if (!covered.has(canonical(address))) {
+      additions.push(address.trim());
+      covered.add(canonical(address));
+    }
+  }
+  if (!additions.length) {
+    return base.copy.raw;
+  }
+  const merged = await processMessage(base.copy.raw, (headers) => {
+    const value = [...values(headers, "bcc"), ...additions].join(", ");
+    if (headers.hasHeader("bcc")) {
+      headers.update("Bcc", value);
+    } else {
+      headers.add("Bcc", value, Infinity);
+    }
+  });
+  return merged.raw;
 }

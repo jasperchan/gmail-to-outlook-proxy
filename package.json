@@ -26,6 +26,7 @@
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@next/env": "^15.0.2",
     "@next/third-parties": "^15.0.1",
+    "@zone-eu/mailsplit": "5.4.19",
     "iron-session": "^8.0.3",
     "lodash": "^4.17.21",
     "lucide-react": "^0.453.0",
