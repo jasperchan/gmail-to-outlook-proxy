@@ -14,3 +14,5 @@ services:
       - ./data:/app/data
       - ./certificates:/app/certificates
     restart: unless-stopped
+    # let the SMTP server drain held messages (pm2 kill_timeout 45s, drain cap 30s)
+    stop_grace_period: 60s

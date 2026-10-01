@@ -1,0 +1,20 @@
+{
+  "name": "gmail-to-bcc",
+  "description": "Gmail Send mail as: To + Bcc. One connection per recipient, same Message-ID; only the Bcc recipient's copy has a Bcc header.",
+  "source": "recorded 2026-10-01 from *.google.com",
+  "sender": "sender@example.com",
+  "copies": [
+    {
+      "rcptTo": [
+        "to@example.org"
+      ],
+      "raw": "MIME-Version: 1.0\r\nFrom: sender@example.com\r\nDate: Thu, 1 Oct 2026 08:16:14 -0700\r\nMessage-ID: <gmail-to-bcc-1@example.com>\r\nSubject: [sendas-dev test] 3 to+bcc\r\nTo: to@example.org\r\nContent-Type: multipart/alternative; boundary=\"00000000000045beb2065cc8e62e\"\r\n\r\n--00000000000045beb2065cc8e62e\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n(content removed)\r\n--00000000000045beb2065cc8e62e\r\nContent-Type: text/html; charset=\"UTF-8\"\r\n\r\n(content removed)\r\n--00000000000045beb2065cc8e62e--\r\n"
+    },
+    {
+      "rcptTo": [
+        "bcc@example.org"
+      ],
+      "raw": "MIME-Version: 1.0\r\nFrom: sender@example.com\r\nDate: Thu, 1 Oct 2026 08:16:14 -0700\r\nMessage-ID: <gmail-to-bcc-1@example.com>\r\nSubject: [sendas-dev test] 3 to+bcc\r\nTo: to@example.org\r\nContent-Type: multipart/alternative; boundary=\"00000000000045beb2065cc8e62e\"\r\nBcc: bcc@example.org\r\n\r\n--00000000000045beb2065cc8e62e\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n(content removed)\r\n--00000000000045beb2065cc8e62e\r\nContent-Type: text/html; charset=\"UTF-8\"\r\n\r\n(content removed)\r\n--00000000000045beb2065cc8e62e--\r\n"
+    }
+  ]
+}
