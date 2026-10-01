@@ -130,8 +130,28 @@ These come from Microsoft Graph and Exchange, not from the proxy:
 
 - **From address:** messages are sent from the mailbox's **primary** address. A `From:` set to an alias is replaced with the primary address, and a `From:` the account doesn't own is rejected (the proxy answers `550` so the client bounces immediately).
 - **Accounts that sign in with a non-Microsoft address** (e.g. a Gmail address) have an auto-generated mailbox address like `outlook_<id>@outlook.com`, which is what recipients see and which spam filters may flag. Make an outlook.com alias the primary address at account.microsoft.com to avoid this.
-- **Headers:** `Message-ID`, `In-Reply-To` and `References` (reply threading) are kept; custom `X-` headers and the original `Date` are replaced by Exchange.
+- **Headers:** `Message-ID`, `In-Reply-To` and `References` (reply threading) are kept; custom `X-` headers and the original `Date` are replaced by Exchange, and the `From:` display name is replaced with the Microsoft account's name.
 - **Late Bcc copies:** if a Bcc recipient's copy arrives after the merge window, that recipient is not sent the message (Graph delivers to whoever is in the headers, so adding them would re-send it to everyone); the server logs a warning. Gmail sends all copies within about a second, well inside the window.
+
+## Why Graph `sendMail` instead of SMTP
+
+Microsoft still accepts OAuth on its own SMTP servers (`smtp-mail.outlook.com`, `smtp.office365.com`) through `AUTH XOAUTH2` with the delegated `SMTP.Send` permission, so a proxy could instead relay Gmail's SMTP transactions unchanged, as [microsoft-smtp-oauth2-proxy](https://github.com/oldium/microsoft-smtp-oauth2-proxy) does. That keeps the envelope, so Bcc needs no merging. This project sends through Microsoft Graph instead, because relaying over SMTP behaves worse for Gmail's "Send mail as" in practice:
+
+|                                            | Graph `sendMail` (this project)                                             | SMTP relay with `SMTP.Send`                                                                                                                                                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reply threading                            | `Message-ID` kept, so replies thread with the message in Gmail's Sent       | Outlook.com's SMTP server replaces `Message-ID` (the original survives only as `X-Microsoft-Original-Message-ID`), so the first reply arrives in a separate conversation, and each per-recipient copy gets a different ID |
+| Work or school accounts                    | Work regardless of the organization's SMTP settings                         | Fail wherever SMTP AUTH is disabled, the default for Microsoft 365 tenants created since 2020                                                                                                                             |
+| Personal accounts                          | All work                                                                    | Some mailboxes refuse SMTP sign-in (`535 5.7.3`) even with a valid `SMTP.Send` token                                                                                                                                      |
+| Gmail's parallel per-recipient connections | Merged into one message                                                     | Exceed Microsoft's concurrent SMTP connections per mailbox (`432 4.3.2`), so submissions must be queued per user                                                                                                          |
+| Bcc                                        | Merged into one message's `Bcc:`, see [above](#multiple-recipients-and-bcc) | Delivered natively from the envelope                                                                                                                                                                                      |
+| `From:` display name, `Date`, `X-` headers | Replaced or stripped                                                        | Kept                                                                                                                                                                                                                      |
+| Permission                                 | `Mail.Send`                                                                 | `SMTP.Send` on top, so every existing user would have to sign in and consent again                                                                                                                                        |
+
+Implementation notes for anyone adding an SMTP path:
+
+- A login can't combine `https://graph.microsoft.com/.default` with another API's scope (`AADSTS70011`): list `Mail.Send`, `User.Read` and `https://outlook.office.com/SMTP.Send` explicitly, and redeem the code for one API at a time. The stored refresh token then yields an SMTP access token with `scope=https://outlook.office.com/SMTP.Send`.
+- `SMTP.Send` (Microsoft Graph permission `258f6531-6087-4cc4-bb90-092c5fb3ed3f`) can be consented to by users; until they do, the token request fails with `AADSTS70000` (personal) or `AADSTS65001` (work).
+- Both SMTP hosts reach the same Exchange Online front ends and accept the same tokens; the `XOAUTH2` user is the account's email address.
 
 ## Self-hosting: DNS, ports and certificates
 
