@@ -33,12 +33,13 @@ export function Header() {
         </Link>
       </div>
       <h1 className="text-4xl font-bold text-gray-900 sm:text-5xl mb-6">
-        Configure "Send mail as" In Gmail For Personal Outlook.com Emails
+        Configure "Send mail as" In Gmail For Outlook.com And Microsoft 365
+        Emails
       </h1>
       <p className="text-xl text-gray-600 max-w-3xl mx-auto">
         An SMTP relay service to restore Gmail's "Send mail as" functionality
-        for your Outlook.com account after Microsoft's basic authentication
-        deprecation on September 16, 2024.
+        for your Outlook.com or Microsoft 365 work or school account after
+        Microsoft's basic authentication deprecation on September 16, 2024.
       </p>
     </div>
   );

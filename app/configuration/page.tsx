@@ -273,7 +273,10 @@ export default function Page() {
               </li>
               <li>Go to "Accounts and Import".</li>
               <li>Find "Send mail as" section.</li>
-              <li>Add your Outlook.com email using the SMTP settings above.</li>
+              <li>
+                Add your Outlook.com or Microsoft 365 email using the SMTP
+                settings above.
+              </li>
             </ol>
           </div>
         </div>
