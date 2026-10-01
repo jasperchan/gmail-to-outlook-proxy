@@ -1,0 +1,9 @@
+[Unit]
+Description=Run sendas.email daily maintenance at 07:30 UTC
+
+[Timer]
+OnCalendar=*-*-* 07:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

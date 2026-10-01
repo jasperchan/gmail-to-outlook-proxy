@@ -1,0 +1,11 @@
+# install: see README "Deploying"; adjust WorkingDirectory/ExecStart to your checkout
+[Unit]
+Description=sendas.email certificate renewal and db backup
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/ec2-user/gmail-to-outlook-proxy
+ExecStart=/home/ec2-user/gmail-to-outlook-proxy/deploy/daily.sh

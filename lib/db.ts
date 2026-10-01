@@ -11,7 +11,7 @@ export type User = {
   email: string;
   token: MicrosoftOAuthCredentials;
   smtp_password: string;
-  app_id: string;
+  app_id: string | null;
 };
 
 export async function getDb() {

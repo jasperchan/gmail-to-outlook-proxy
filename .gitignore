@@ -44,3 +44,10 @@ data/*
 !data/.gitkeep
 certificates/*
 !certificates/.gitkeep
+
+# local overrides
+.env*.local
+
+# server-only deploy config
+deploy/.env
+hooks.local.js

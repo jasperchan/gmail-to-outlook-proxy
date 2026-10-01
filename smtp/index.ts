@@ -1,5 +1,5 @@
 import "source-map-support/register.js";
-import "localenv";
+import "./env.js";
 import Server from "smtp-server";
 import {
   getApp,
@@ -27,6 +27,9 @@ const cert =
 
 const cache = new Cache({ stdTTL: 60, checkperiod: 60 });
 
+// SMTP_DRY_RUN=1 skips Microsoft entirely: no token refresh, no sendMail, message is logged
+const dryRun = /^(1|true|yes|on)$/i.test(process.env.SMTP_DRY_RUN ?? "");
+
 const server = new Server.SMTPServer({
   authMethods: ["PLAIN", "LOGIN"],
   onConnect(session, callback) {
@@ -39,18 +42,20 @@ const server = new Server.SMTPServer({
       if (!user || user.smtp_password !== auth.password) {
         throw new Error("Invalid username or password.");
       }
-      const credentials = await getCredentials(
-        user.email,
-        user.email,
-        getApp(user.app_id)
-      );
+      const credentials = dryRun
+        ? user.token
+        : await getCredentials(user.email, user.email, getApp(user.app_id));
       callback(null, {
         user: {
           user,
           credentials,
         } as SessionUser,
       });
-    } catch (err) {
+    } catch (err: any) {
+      console.error(
+        `Auth failed for ${JSON.stringify(auth.username)}:`,
+        err?.message ?? err
+      );
       callback(new Error("Invalid username or password."));
     }
   },
@@ -74,6 +79,14 @@ const server = new Server.SMTPServer({
             cache.set(messageId, true);
           }
           const sessionUser = session.user as any as SessionUser;
+          if (dryRun) {
+            console.log(
+              `[dry run] ${sessionUser.user.email} -> ${session.envelope.rcptTo
+                .map((r) => r.address)
+                .join(", ")}\n${raw.toString()}`
+            );
+            return callback();
+          }
           const client = getMicrosoftGraphClient(sessionUser.credentials);
           await client
             .api("/me/sendMail")
@@ -91,9 +104,14 @@ const server = new Server.SMTPServer({
   console.log(err);
 });
 
-const port = 587;
+const port = Number(process.env.SMTP_PORT || 587);
+if (!Number.isInteger(port)) {
+  throw new Error(`Invalid SMTP_PORT: ${process.env.SMTP_PORT}`);
+}
 server.listen(port, () => {
-  console.log(`SMTP server listening on port ${port}`);
+  console.log(
+    `SMTP server listening on port ${port}${dryRun ? " (dry run)" : ""}`
+  );
   process.on("SIGINT", () => {
     console.log("SMTP server shutting down");
     cache.close();

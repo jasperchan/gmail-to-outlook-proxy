@@ -65,7 +65,7 @@ export default function Page() {
         email: data.email,
         password: data.smtp_password,
         smtpPort: 587,
-        smtpServer: "smtp.sendas.email",
+        smtpServer: data.smtp_host,
         security: "TLS",
       });
     } catch (err) {
