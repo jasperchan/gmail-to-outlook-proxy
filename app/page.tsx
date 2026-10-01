@@ -89,6 +89,12 @@ export default function Home() {
                   </a>{" "}
                   endpoint
                 </li>
+                <li>
+                  Works with personal Microsoft accounts (Outlook.com, Hotmail,
+                  Live) and Microsoft 365 work or school accounts with an
+                  Exchange Online mailbox (some organizations require an admin
+                  to approve the app first)
+                </li>
               </ul>
               <p className="text-gray-600 leading-relaxed">
                 The service maintains end-to-end security by using encrypted
@@ -113,8 +119,17 @@ export default function Home() {
                   target="_blank"
                 >
                   https://account.microsoft.com/privacy/app-access
+                </a>{" "}
+                (work or school accounts:{" "}
+                <a
+                  className="text-blue-500"
+                  rel="noopener"
+                  href="https://myapps.microsoft.com"
+                  target="_blank"
+                >
+                  https://myapps.microsoft.com
                 </a>
-                .
+                ).
               </p>
             </div>
           </div>
