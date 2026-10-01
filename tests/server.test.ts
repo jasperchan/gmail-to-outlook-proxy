@@ -4,11 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { AddressInfo } from "node:net";
 import SMTPConnection from "nodemailer/lib/smtp-connection";
-import { createSmtpServer } from "./server.js";
-import { getHeaderAddresses, mergeCopies, rewriteRecipients } from "./merge.js";
-import type { Fixture } from "./fixture.js";
+import { createSmtpServer } from "../smtp/server.js";
+import {
+  getHeaderAddresses,
+  mergeCopies,
+  rewriteRecipients,
+} from "../smtp/merge.js";
+import type { Fixture } from "../smtp/fixture.js";
 
-// Replays recorded client behavior (smtp/fixtures, see `npm run smtp:fixture`) against
+// Replays recorded client behavior (tests/fixtures, see `npm run smtp:fixture`) against
 // the real SMTP server with Microsoft Graph replaced by a fake that captures what it
 // would have sent. Graph delivers to the To/Cc/Bcc headers, so that's what we assert on.
 
@@ -19,7 +23,7 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function loadFixture(name: string): Fixture {
   return JSON.parse(
     fs.readFileSync(
-      path.join(process.cwd(), "smtp", "fixtures", `${name}.json`),
+      path.join(process.cwd(), "tests", "fixtures", `${name}.json`),
       "utf8"
     )
   );

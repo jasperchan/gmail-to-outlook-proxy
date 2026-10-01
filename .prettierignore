@@ -4,5 +4,5 @@ node_modules/
 data/
 certificates/
 package-lock.json
-smtp/fixtures/
+tests/fixtures/
 migrations/

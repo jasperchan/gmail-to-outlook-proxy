@@ -5,3 +5,4 @@ build/
 node_modules/
 .env*.local
 deploy/
+tests/

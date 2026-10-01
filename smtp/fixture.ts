@@ -4,7 +4,7 @@ import addressparser from "nodemailer/lib/addressparser";
 
 // usage: npm run smtp:fixture -- <name> "<description>" <recording.json>...
 // Turns SMTP_RECORD_DIR recordings (one per transaction) into a sanitized scenario
-// fixture in smtp/fixtures/<name>.json: addresses become example.org addresses without
+// fixture in tests/fixtures/<name>.json: addresses become example.org addresses without
 // display names, trace/threading headers are dropped, Message-IDs are replaced and every
 // MIME part's content is blanked (the structure is kept). Still review before committing.
 
@@ -164,7 +164,7 @@ function main() {
       raw: sanitize(raw, addresses, messageIds),
     })),
   };
-  const out = path.join(process.cwd(), "smtp", "fixtures", `${name}.json`);
+  const out = path.join(process.cwd(), "tests", "fixtures", `${name}.json`);
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, JSON.stringify(fixture, null, 2) + "\n");
   console.log(`Wrote ${out} (${fixture.copies.length} copies)`);
