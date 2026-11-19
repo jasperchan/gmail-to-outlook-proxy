@@ -76,7 +76,7 @@ Set `SMTP_PORT` if 587 is taken locally.
 Everything server-specific lives in `.env`, `deploy/.env` and `hooks.local.js` (all gitignored), so the checkout on the server should stay clean:
 
 - `.env`: app config, plus `WEB_PORT` / `SMTP_PORT` for the host ports.
-- `hooks.local.js`: optional custom `onNewLogin` / `onMailForwarded` hooks (e.g. notifications), see `lib/hooks.ts`.
+- `hooks.local.js`: optional custom `onNewLogin` / `onMailForwarded` / `onMailFailed` hooks (e.g. notifications or logging), see `lib/hooks.ts`.
 - `deploy/.env`: certificate domain, Cloudflare credentials path, and S3 backup location (see `deploy/.env.example`).
 
 Scripts (run on the server from anywhere):
