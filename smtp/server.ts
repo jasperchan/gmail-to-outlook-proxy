@@ -13,6 +13,8 @@ type SmtpServerDeps<U extends { email: string }> = {
   // forwards a MIME message; recipients are taken from its To/Cc/Bcc headers
   send(user: U, raw: Buffer): Promise<void>;
   onSent?(user: U, raw: Buffer): void;
+  // the merged message was not sent; the client sees err and may retry
+  onFailed?(err: any, user: U, raw: Buffer): void;
   // how long to wait for more copies of the same message (Gmail sends one per recipient)
   mergeWindowMs?: number;
   maxWaitMs?: number;
@@ -53,8 +55,9 @@ export function createSmtpServer<U extends { email: string }>(
     pending.delete(key);
     clearTimeout(group.timer);
     const sending = (async () => {
+      let merged: Buffer | undefined;
       try {
-        const merged = await mergeCopies(group.copies);
+        merged = await mergeCopies(group.copies);
         await deps.send(group.user, merged);
         // before resolving, so copies waiting on this send see who already has it
         delivered.set(key, true);
@@ -64,6 +67,7 @@ export function createSmtpServer<U extends { email: string }>(
       } catch (err: any) {
         // nothing was acknowledged yet, so the client sees the failure and can retry
         group.waiters.forEach((waiter) => waiter(err));
+        deps.onFailed?.(err, group.user, merged ?? group.copies[0].raw);
         return false;
       }
     })();

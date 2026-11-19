@@ -55,11 +55,13 @@ async function startServer(
 ) {
   const sent: { user: string; raw: Buffer }[] = [];
   const hooked: Buffer[] = [];
+  const failed: { err: Error; raw: Buffer }[] = [];
   let failures = options.failSends ?? 0;
   const { server, close, drain } = createSmtpServer<User>({
     // long enough that parallel test connections always land in the same window
     mergeWindowMs: options.mergeWindowMs ?? 1000,
     onSent: (_user, raw) => hooked.push(raw),
+    onFailed: (err, _user, raw) => failed.push({ err, raw }),
     serverOptions: {
       secure: false,
       disabledCommands: ["STARTTLS"],
@@ -88,6 +90,7 @@ async function startServer(
   return {
     sent,
     hooked,
+    failed,
     port,
     drain,
     async stop() {
@@ -203,12 +206,19 @@ test("a failed send is reported to every connection and a retry still sends", as
       ["rejected", "rejected"]
     );
     assert.equal(server.sent.length, 0);
+    // reported once, with the merged message that Graph refused
+    assert.equal(server.failed.length, 1);
+    assert.equal(server.failed[0].err.message, "Graph unavailable");
+    assert.deepEqual((await getHeaderAddresses(server.failed[0].raw)).bcc, [
+      "bcc@example.org",
+    ]);
     // the client retries; the failed attempt must not be treated as already sent
     await Promise.all([
       deliver(server.port, toCopy),
       deliver(server.port, bccCopy),
     ]);
     assert.equal(server.sent.length, 1);
+    assert.equal(server.failed.length, 1);
     assert.deepEqual((await getHeaderAddresses(server.sent[0].raw)).bcc, [
       "bcc@example.org",
     ]);

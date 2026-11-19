@@ -8,7 +8,7 @@ import {
 } from "../lib/microsoft.js";
 import fs from "node:fs";
 import { getDb, getUser, User } from "../lib/db.js";
-import { onMailForwarded } from "../lib/hooks.js";
+import { onMailFailed, onMailForwarded } from "../lib/hooks.js";
 import { createSmtpServer } from "./server.js";
 
 type SessionUser = {
@@ -82,6 +82,19 @@ const { server, drain } = createSmtpServer<SessionUser>({
   },
   onSent(sessionUser, raw) {
     onMailForwarded(sessionUser.email, raw.toString("base64"));
+  },
+  onFailed(err, sessionUser, raw) {
+    onMailFailed(
+      {
+        responseCode: err?.responseCode ?? 451,
+        status: err?.statusCode,
+        code: err?.code ?? undefined,
+        message: err?.message ?? String(err),
+        requestId: err?.requestId ?? undefined,
+      },
+      sessionUser.email,
+      raw.toString("base64")
+    );
   },
 });
 
