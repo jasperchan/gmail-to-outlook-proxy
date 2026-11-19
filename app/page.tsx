@@ -1,4 +1,10 @@
-import { ArrowRight, AlertCircle, Server, Github } from "lucide-react";
+import {
+  ArrowRight,
+  AlertCircle,
+  CalendarClock,
+  Server,
+  Github,
+} from "lucide-react";
 import { Header } from "./components/header";
 import { Footer } from "./components/footer";
 import Image from "next/image";
@@ -160,6 +166,48 @@ export default function Home() {
                 >
                   OAuth 2.0 flow
                 </a>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 bg-white rounded-2xl shadow-xl p-8">
+          <div className="flex items-start space-x-4">
+            <CalendarClock className="h-6 w-6 text-amber-500 flex-shrink-0 mt-1" />
+            <div className="pr-10">
+              <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+                Gmail Is Removing "Send mail as" in January 2027
+              </h2>
+              <p className="text-gray-600 leading-relaxed">
+                Google has{" "}
+                <a
+                  className="text-blue-500"
+                  rel="noopener"
+                  target="_blank"
+                  href="https://support.google.com/mail/answer/17101213"
+                >
+                  announced
+                </a>{" "}
+                that starting January 2027, Gmail will no longer let you send
+                from third-party addresses such as Outlook.com. This removes the
+                "Send mail as" settings in Gmail that this service depends on.
+                The service will keep running until then, in case Google changes
+                its mind.
+              </p>
+              <p className="text-gray-600 leading-relaxed mt-4">
+                As of this update (November 2026), there is no way to restore
+                this in Gmail on the web. In a mail client that supports
+                Microsoft sign-in, you can send from your Outlook.com address
+                directly using{" "}
+                <a
+                  className="text-blue-500"
+                  rel="noopener"
+                  target="_blank"
+                  href="https://support.microsoft.com/en-us/outlook/pop-imap-and-smtp-settings-for-outlook-com"
+                >
+                  Microsoft's SMTP settings
+                </a>
+                .
               </p>
             </div>
           </div>
